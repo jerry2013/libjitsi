@@ -444,6 +444,9 @@ public abstract class AbstractCodec2
         int process;
         int inLenProcessed = inBuf.getLength();
 
+        if (inLenProcessed == 0)
+            return OUTPUT_BUFFER_NOT_FILLED;
+        
         // Buffer.FLAG_SILENCE is set only when the intention is to drop the
         // specified input Buffer but to note that it has not been lost. The
         // latter is usually necessary if this AbstractCodec2 does Forward Error
