@@ -16,6 +16,7 @@
 package org.jitsi.impl.neomedia.recording;
 
 import java.io.*;
+import java.util.Random;
 import org.jitsi.util.*;
 
 public class WebmWriter
@@ -74,7 +75,12 @@ public class WebmWriter
 
     public void close()
     {
-        writeWebmFileFooter(glob, 0);
+        // Generates a random Track UID.
+        // Not 0 (https://www.matroska.org/technical/specs/)
+        Random r = new Random();
+        long trackUID = r.nextInt(1 << 30) + 1;
+
+        writeWebmFileFooter(glob, trackUID);
         freeCfg(glob); //also closes the file
     }
 

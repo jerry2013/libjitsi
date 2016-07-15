@@ -50,12 +50,16 @@ If there are errors while linking on linux x86_64 try to add --extra-cflags='-fv
 make
 ```
 
+### Get libmkv source from jitsi  (needed to compilie libjnvpx) 
+
+Download from https://github.com/jitsi/libsrc (libmkv.zip)
+
 ### Build the libjitsi code with the libvpx ant target
 Run the 'libvpx' ant target from the 'libjitsi/' directory, setting the 'libvpx'
-property. 
+and the 'libmkv' property. 
 
 ```
-libjitsi/ $ ant libvpx -Dlibvpx=/path/to/libvpx/sources
+libjitsi/ $ ant libvpx -Dlibvpx=/path/to/libvpx/sources -Dlibmkv=/path/to/libmkv/sources
 ```
 
 ### Alternatively, you can build manually with something like (on mac)
