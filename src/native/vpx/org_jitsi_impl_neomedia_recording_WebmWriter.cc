@@ -295,6 +295,7 @@ FUNC(void, writeWebmFileHeader, jlong jglob,
       Ebml_StartSubElement(glob, &trackStart, Tracks);
       {
         unsigned int trackNumber = 1;
+        uint64_t     trackID = 1; // not 0
 
         EbmlLoc start;
         Ebml_StartSubElement(glob, &start, TrackEntry);
