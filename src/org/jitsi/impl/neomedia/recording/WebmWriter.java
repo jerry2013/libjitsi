@@ -16,6 +16,7 @@
 package org.jitsi.impl.neomedia.recording;
 
 import java.io.*;
+import java.util.Random;
 import org.jitsi.util.*;
 
 public class WebmWriter
@@ -48,10 +49,10 @@ public class WebmWriter
     private native void freeCfg(long glob);
 
     private native boolean openFile(long glob, String fileName);
-    private native void writeWebmFileHeader(long glob, int width, int height);
+    private native void writeWebmFileHeader(long glob, int width, int height, long trackID);
     public void writeWebmFileHeader(int width, int height)
     {
-        writeWebmFileHeader(glob, width, height);
+        writeWebmFileHeader(glob, width, height, 1);
     }
     private native void writeWebmBlock(long glob, FrameDescriptor fd);
     private native void writeWebmFileFooter(long glob, long hash);
@@ -74,7 +75,13 @@ public class WebmWriter
 
     public void close()
     {
-        writeWebmFileFooter(glob, 0);
+        // Generates a random TrackUID (https://www.matroska.org/technical/specs/index.html)
+        // A unique ID to identify the Track. This should be kept the same when
+        // making a direct stream copy of the Track to another file. Not 0.
+        Random r = new Random();
+        long trackUID = r.nextInt(1 << 30) + 1;
+
+        writeWebmFileFooter(glob, trackUID);
         freeCfg(glob); //also closes the file
     }
 

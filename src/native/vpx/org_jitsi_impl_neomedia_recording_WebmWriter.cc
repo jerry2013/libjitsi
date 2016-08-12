@@ -269,7 +269,7 @@ static void write_webm_seek_info(EbmlGlobal *ebml) {
 }
 
 FUNC(void, writeWebmFileHeader, jlong jglob,
-                                            jint width, jint height) {
+                                            jint width, jint height, jlong trackID) {
   EbmlGlobal *glob = reinterpret_cast<EbmlGlobal*>(jglob);
   stereo_format_t stereo_fmt = STEREO_FORMAT_MONO;
 
@@ -295,7 +295,6 @@ FUNC(void, writeWebmFileHeader, jlong jglob,
       Ebml_StartSubElement(glob, &trackStart, Tracks);
       {
         unsigned int trackNumber = 1;
-        uint64_t     trackID = 0;
 
         EbmlLoc start;
         Ebml_StartSubElement(glob, &start, TrackEntry);
