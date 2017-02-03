@@ -25,9 +25,12 @@ import net.sf.fmj.media.rtp.RTPHeader;
 
 import org.ice4j.util.*;
 import org.jitsi.impl.neomedia.*;
+import org.jitsi.impl.neomedia.rtcp.*;
+import org.jitsi.impl.neomedia.rtp.*;
 import org.jitsi.service.libjitsi.*;
 import org.jitsi.service.neomedia.*;
 import org.jitsi.util.*;
+import org.jitsi.util.Logger; // Disambiguation.
 
 /**
  * Implements <tt>OutputDataStream</tt> for an <tt>RTPTranslatorImpl</tt>. The
@@ -35,6 +38,9 @@ import org.jitsi.util.*;
  * endpoint <tt>OutputDataStream</tt>s.
  *
  * @author Lyubomir Marinov
+ * @author Maryam Daneshi
+ * @author George Politis
+ * @author Boris Grozev
  */
 class OutputDataStreamImpl
     implements OutputDataStream,
@@ -240,24 +246,26 @@ class OutputDataStreamImpl
                             format,
                             exclusion);
             }
-            if (!write)
-                continue;
 
-            // Allow the RTPTranslatorImpl a final chance to filter out the
-            // packet on a source-destination basis.
-            write
-                = translator.willWrite(
+            if (write)
+            {
+                // Allow the RTPTranslatorImpl a final chance to filter out the
+                // packet on a source-destination basis.
+                write
+                    = translator.willWrite(
                         /* source */ exclusion,
-                        buf, off, len,
+                    buf, off, len,
                         /* destination */ streamRTPManager,
-                        _data);
-            if (!write)
-                continue;
+                    _data);
+            }
 
-            int w = s.stream.write(buf, off, len);
+            if (write)
+            {
+                int w = s.stream.write(buf, off, len);
 
-            if (written < w)
-                written = w;
+                if (written < w)
+                    written = w;
+            }
         }
         return written;
     }
@@ -454,7 +462,7 @@ class OutputDataStreamImpl
      * destination of the write
      * @param buffer the data to be written into <tt>destination</tt>
      * @param offset the offset in <tt>buffer</tt> at which the data to be
-     * written into <tt>destination</tt> starts 
+     * written into <tt>destination</tt> starts
      * @param length the number of <tt>byte</tt>s in <tt>buffer</tt>
      * beginning at <tt>offset</tt> which constitute the data to the written
      * into <tt>destination</tt>

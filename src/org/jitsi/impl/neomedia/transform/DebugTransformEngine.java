@@ -90,7 +90,7 @@ public class DebugTransformEngine implements TransformEngine
      * @param pktLogging the {@code PacketLoggingService} to be used by the new
      * instance
      */
-    public DebugTransformEngine(
+    DebugTransformEngine(
             MediaStreamImpl mediaStream,
             PacketLoggingService pktLogging)
     {
@@ -152,7 +152,7 @@ public class DebugTransformEngine implements TransformEngine
     {
         if (pkt == null)
         {
-            return pkt;
+            return null;
         }
 
         if (mediaStream == null)

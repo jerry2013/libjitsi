@@ -15,6 +15,8 @@
  */
 package org.jitsi.impl.neomedia.rtp.sendsidebandwidthestimation;
 
+import org.jitsi.impl.neomedia.rtcp.*;
+import org.jitsi.impl.neomedia.rtp.*;
 import org.jitsi.service.neomedia.*;
 import org.jitsi.service.neomedia.rtp.*;
 import org.jitsi.util.*;
@@ -30,7 +32,8 @@ import java.util.*;
  * @author Boris Grozev
  */
 class SendSideBandwidthEstimation
-    implements REMBListener, BandwidthEstimator
+    extends RTCPPacketListenerAdapter
+    implements BandwidthEstimator
 {
     /**
      * send_side_bandwidth_estimation.cc
@@ -134,7 +137,9 @@ class SendSideBandwidthEstimation
     private final List<BandwidthEstimator.Listener> listeners
         = new LinkedList<>();
 
-    //TODO: get RTT from here
+    /**
+     * The {@link MediaStream} for this {@link SendSideBandwidthEstimation}.
+     */
     private final MediaStream mediaStream;
 
     SendSideBandwidthEstimation(MediaStream stream, long startBitrate)
@@ -347,6 +352,33 @@ class SendSideBandwidthEstimation
      * {@inheritDoc}
      */
     @Override
+    public long getLatestEstimate()
+    {
+        return bitrate_;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long getLatestREMB()
+    {
+        return bwe_incoming_;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getLatestFractionLoss()
+    {
+        return last_fraction_loss_;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     public synchronized void addListener(Listener listener)
     {
         listeners.add(listener);
@@ -365,9 +397,9 @@ class SendSideBandwidthEstimation
      * {@inheritDoc}
      */
     @Override
-    public void rembReceived(long bitrateBps)
+    public void rembReceived(RTCPREMBPacket remb)
     {
-        updateReceiverEstimate(bitrateBps);
+        updateReceiverEstimate(remb.getBitrate());
     }
 
     /**
@@ -376,7 +408,7 @@ class SendSideBandwidthEstimation
      */
     private synchronized long getRtt()
     {
-        long rtt = mediaStream.getMediaStreamStats().getRttMs();
+        long rtt = mediaStream.getMediaStreamStats().getSendStats().getRtt();
         if (rtt < 0 || rtt > 1000)
         {
             logger.warn("RTT not calculated, or has a suspiciously high value ("

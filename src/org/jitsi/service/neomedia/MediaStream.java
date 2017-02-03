@@ -20,11 +20,13 @@ import java.net.*;
 import java.util.*;
 
 import org.jitsi.impl.neomedia.*;
+import org.jitsi.impl.neomedia.codec.*;
 import org.jitsi.impl.neomedia.rtp.*;
 import org.jitsi.impl.neomedia.transform.*;
 import org.jitsi.service.neomedia.device.*;
 import org.jitsi.service.neomedia.format.*;
 import org.jitsi.service.neomedia.rtp.*;
+import org.jitsi.service.neomedia.stats.*;
 
 /**
  * The <tt>MediaStream</tt> class represents a (generally) bidirectional RTP
@@ -34,6 +36,7 @@ import org.jitsi.service.neomedia.rtp.*;
  *
  * @author Emil Ivov
  * @author Lyubomir Marinov
+ * @author George Politis
  */
 public interface MediaStream
 {
@@ -41,13 +44,13 @@ public interface MediaStream
      * The name of the property which indicates whether the local SSRC is
      * currently available.
      */
-    public static final String PNAME_LOCAL_SSRC = "localSSRCAvailable";
+    String PNAME_LOCAL_SSRC = "localSSRCAvailable";
 
     /**
      * The name of the property which indicates whether the remote SSRC is
      * currently available.
      */
-    public static final String PNAME_REMOTE_SSRC = "remoteSSRCAvailable";
+    String PNAME_REMOTE_SSRC = "remoteSSRCAvailable";
 
     /**
      * Adds a new association in this <tt>MediaStream</tt> of the specified RTP
@@ -61,7 +64,7 @@ public interface MediaStream
      * @param format the <tt>MediaFormat</tt> to be associated in this
      * <tt>MediaStream</tt> with <tt>rtpPayloadType</tt>
      */
-    public void addDynamicRTPPayloadType(
+    void addDynamicRTPPayloadType(
             byte rtpPayloadType,
             MediaFormat format);
 
@@ -69,7 +72,7 @@ public interface MediaStream
      * Clears the dynamic RTP payload type associations in this
      * <tt>MediaStream</tt>.
      */
-    public void clearDynamicRTPPayloadTypes();
+    void clearDynamicRTPPayloadTypes();
 
     /**
      * Adds an additional RTP payload mapping that will overriding one that
@@ -85,7 +88,7 @@ public interface MediaStream
      * @param originalPt the payload type that we are overriding
      * @param overloadPt the payload type that we are overriging it with
      */
-    public void addDynamicRTPPayloadTypeOverride(byte originalPt,
+    void addDynamicRTPPayloadTypeOverride(byte originalPt,
                                                  byte overloadPt);
 
     /**
@@ -96,7 +99,7 @@ public interface MediaStream
      * @param listener the listener that we'd like to register for
      * <tt>PropertyChangeEvent</tt>s
      */
-    public void addPropertyChangeListener(PropertyChangeListener listener);
+    void addPropertyChangeListener(PropertyChangeListener listener);
 
     /**
      * Adds or updates an association in this <tt>MediaStream</tt> mapping the
@@ -109,13 +112,13 @@ public interface MediaStream
      * @param rtpExtension the <tt>RTPExtension</tt> that we are mapping to
      * <tt>extensionID</tt>.
      */
-    public void addRTPExtension(byte extensionID, RTPExtension rtpExtension);
+    void addRTPExtension(byte extensionID, RTPExtension rtpExtension);
 
     /**
      * Releases the resources allocated by this instance in the course of its
      * execution and prepares it to be garbage collected.
      */
-    public void close();
+    void close();
 
     /**
      * Returns a map containing all currently active <tt>RTPExtension</tt>s in
@@ -124,7 +127,7 @@ public interface MediaStream
      * @return a map containing all currently active <tt>RTPExtension</tt>s in
      * use by this stream.
      */
-    public Map<Byte, RTPExtension> getActiveRTPExtensions();
+    Map<Byte, RTPExtension> getActiveRTPExtensions();
 
     /**
      * Gets the device that this stream uses to play back and capture media.
@@ -132,7 +135,7 @@ public interface MediaStream
      * @return the <tt>MediaDevice</tt> that this stream uses to play back and
      * capture media.
      */
-    public MediaDevice getDevice();
+    MediaDevice getDevice();
 
     /**
      * Gets the direction in which this <tt>MediaStream</tt> is allowed to
@@ -141,7 +144,7 @@ public interface MediaStream
      * @return the <tt>MediaDirection</tt> in which this <tt>MediaStream</tt> is
      * allowed to stream media
      */
-    public MediaDirection getDirection();
+    MediaDirection getDirection();
 
     /**
      * Gets the existing associations in this <tt>MediaStream</tt> of RTP
@@ -158,7 +161,22 @@ public interface MediaStream
      * time of the <tt>getDynamicRTPPayloadTypes()</tt> method call and
      * modifications to it are not reflected on the internal storage
      */
-    public Map<Byte, MediaFormat> getDynamicRTPPayloadTypes();
+    Map<Byte, MediaFormat> getDynamicRTPPayloadTypes();
+
+    /**
+     * Returns the payload type number that has been negotiated for the
+     * specified <tt>encoding</tt> or <tt>-1</tt> if no payload type has been
+     * negotiated for it. If multiple formats match the specified
+     * <tt>encoding</tt>, then this method would return the first one it
+     * encounters while iterating through the map.
+     *
+     * @param codec the encoding whose payload type we are trying to obtain.
+     *
+     * @return the payload type number that has been negotiated for the
+     * specified <tt>codec</tt> or <tt>-1</tt> if no payload type has been
+     * negotiated for it.
+     */
+    byte getDynamicRTPPayloadType(String codec);
 
     /**
      * Returns the <tt>MediaFormat</tt> that this stream is currently
@@ -167,7 +185,18 @@ public interface MediaStream
      * @return the <tt>MediaFormat</tt> that this stream is currently
      * transmitting in.
      */
-    public MediaFormat getFormat();
+    MediaFormat getFormat();
+
+    /**
+     * Returns the <tt>MediaFormat</tt> that is associated to the payload type
+     * passed in as a parameter.
+     *
+     * @param payloadType the payload type of the <tt>MediaFormat</tt> to get.
+     *
+     * @return the <tt>MediaFormat</tt> that is associated to the payload type
+     * passed in as a parameter.
+     */
+    MediaFormat getFormat(byte payloadType);
 
     /**
      * Returns the synchronization source (SSRC) identifier of the local
@@ -178,7 +207,7 @@ public interface MediaStream
      * participant or <tt>-1</tt> if that identifier is not yet known at this
      * point.
      */
-    public long getLocalSourceID();
+    long getLocalSourceID();
 
     /**
      * Returns a <tt>MediaStreamStats</tt> object used to get statistics about
@@ -187,7 +216,7 @@ public interface MediaStream
      * @return the <tt>MediaStreamStats</tt> object used to get statistics about
      * this <tt>MediaStream</tt>.
      */
-    public MediaStreamStats getMediaStreamStats();
+    MediaStreamStats2 getMediaStreamStats();
 
     /**
      * Returns the name of this stream or <tt>null</tt> if no name has been
@@ -198,7 +227,7 @@ public interface MediaStream
      * @return the name of this stream or <tt>null</tt> if no name has been
      * set.
      */
-    public String getName();
+    String getName();
 
     /**
      * Gets the value of a specific opaque property of this
@@ -209,7 +238,7 @@ public interface MediaStream
      * @return the value of the opaque property of this <tt>MediaStream</tt>
      * specified by <tt>propertyName</tt>
      */
-    public Object getProperty(String propertyName);
+    Object getProperty(String propertyName);
 
     /**
      * Returns the address that this stream is sending RTCP traffic to.
@@ -217,7 +246,7 @@ public interface MediaStream
      * @return an <tt>InetSocketAddress</tt> instance indicating the address
      * that we are sending RTCP packets to.
      */
-    public InetSocketAddress getRemoteControlAddress();
+    InetSocketAddress getRemoteControlAddress();
 
     /**
      * Returns the address that this stream is sending RTP traffic to.
@@ -225,7 +254,7 @@ public interface MediaStream
      * @return an <tt>InetSocketAddress</tt> instance indicating the address
      * that we are sending RTP packets to.
      */
-    public InetSocketAddress getRemoteDataAddress();
+    InetSocketAddress getRemoteDataAddress();
 
     /**
      * Gets the synchronization source (SSRC) identifier of the remote peer or
@@ -243,14 +272,14 @@ public interface MediaStream
      * or <tt>-1</tt> if that identifier is not yet known at this point in the
      * execution
      */
-    public long getRemoteSourceID();
+    long getRemoteSourceID();
 
     /**
      * Gets the synchronization source (SSRC) identifiers of the remote peer.
      *
      * @return the synchronization source (SSRC) identifiers of the remote peer
      */
-    public List<Long> getRemoteSourceIDs();
+    List<Long> getRemoteSourceIDs();
 
     /**
      * Gets the {@code StreamRTPManager} which is to forward RTP and RTCP
@@ -259,14 +288,14 @@ public interface MediaStream
      * @return the {@code StreamRTPManager} which is to forward RTP and RTCP
      * traffic between this and other {@code MediaStream}s
      */
-    public StreamRTPManager getStreamRTPManager();
+    StreamRTPManager getStreamRTPManager();
 
     /**
      * The <tt>ZrtpControl</tt> which controls the ZRTP for this stream.
      *
      * @return the <tt>ZrtpControl</tt> which controls the ZRTP for this stream
      */
-    public SrtpControl getSrtpControl();
+    SrtpControl getSrtpControl();
 
     /**
      * Returns the target of this <tt>MediaStream</tt> to which it is to send
@@ -278,7 +307,7 @@ public interface MediaStream
      * <tt>MediaStream</tt> is to send and from which it is to receive
      * @see MediaStream#setTarget(MediaStreamTarget)
      */
-    public MediaStreamTarget getTarget();
+    MediaStreamTarget getTarget();
 
     /**
      * Returns the transport protocol used by the streams.
@@ -286,7 +315,7 @@ public interface MediaStream
      * @return the transport protocol (UDP or TCP) used by the streams. null if
      * the stream connector is not instanciated.
      */
-    public StreamConnector.Protocol getTransportProtocol();
+    StreamConnector.Protocol getTransportProtocol();
 
     /**
      * Determines whether this <tt>MediaStream</tt> is set to transmit "silence"
@@ -298,7 +327,7 @@ public interface MediaStream
      * "silence" instead of the media fed from its <tt>MediaDevice</tt>;
      * <tt>false</tt>, otherwise
      */
-    public boolean isMute();
+    boolean isMute();
 
     /**
      * Determines whether {@link #start()} has been called on this
@@ -309,7 +338,7 @@ public interface MediaStream
      * <tt>MediaStream</tt> without {@link #stop()} or {@link #close()}
      * afterwards
      */
-    public boolean isStarted();
+    boolean isStarted();
 
     /**
      * Removes the specified property change <tt>listener</tt> from this stream
@@ -317,7 +346,7 @@ public interface MediaStream
      *
      * @param listener the listener that we'd like to remove.
      */
-    public void removePropertyChangeListener(PropertyChangeListener listener);
+    void removePropertyChangeListener(PropertyChangeListener listener);
 
     /**
      * Removes the <tt>ReceiveStream</tt> with SSRC <tt>ssrc</tt>, if there is
@@ -325,7 +354,7 @@ public interface MediaStream
      * <tt>MediaStream</tt>
      * @param ssrc the SSRC for which to remove a <tt>ReceiveStream</tt>
      */
-    public void removeReceiveStreamForSsrc(long ssrc);
+    void removeReceiveStreamForSsrc(long ssrc);
 
     /**
      * Sets the <tt>StreamConnector</tt> to be used by this <tt>MediaStream</tt>
@@ -334,7 +363,7 @@ public interface MediaStream
      * @param connector the <tt>StreamConnector</tt> to be used by this
      * <tt>MediaStream</tt> for sending and receiving media
      */
-    public void setConnector(StreamConnector connector);
+    void setConnector(StreamConnector connector);
 
     /**
      * Sets the device that this stream should use to play back and capture
@@ -343,7 +372,7 @@ public interface MediaStream
      * @param device the <tt>MediaDevice</tt> that this stream should use to
      * play back and capture media.
      */
-    public void setDevice(MediaDevice device);
+    void setDevice(MediaDevice device);
 
     /**
      * Sets the direction in which media in this <tt>MediaStream</tt> is to be
@@ -355,7 +384,7 @@ public interface MediaStream
      * @param direction the <tt>MediaDirection</tt> in which this
      * <tt>MediaStream</tt> is to stream media when it is started
      */
-    public void setDirection(MediaDirection direction);
+    void setDirection(MediaDirection direction);
 
     /**
      * Sets the <tt>MediaFormat</tt> that this <tt>MediaStream</tt> should
@@ -364,7 +393,7 @@ public interface MediaStream
      * @param format the <tt>MediaFormat</tt> that this <tt>MediaStream</tt>
      * should transmit in.
      */
-    public void setFormat(MediaFormat format);
+    void setFormat(MediaFormat format);
 
     /**
      * Causes this <tt>MediaStream</tt> to stop transmitting the media being fed
@@ -376,7 +405,7 @@ public interface MediaStream
      * <tt>false</tt> if we are to use media from this stream's
      * <tt>MediaDevice</tt> again.
      */
-    public void setMute(boolean mute);
+    void setMute(boolean mute);
 
     /**
      * Sets the name of this stream. Stream names are used by some protocols,
@@ -386,7 +415,7 @@ public interface MediaStream
      * @param name the name of this stream or <tt>null</tt> if no name has been
      * set.
      */
-    public void setName(String name);
+    void setName(String name);
 
     /**
      * Sets the value of a specific opaque property of this
@@ -398,7 +427,7 @@ public interface MediaStream
      * @param value the value of the opaque property of this
      * <tt>MediaStream</tt> specified by <tt>propertyName</tt> to be set
      */
-    public void setProperty(String propertyName, Object value);
+    void setProperty(String propertyName, Object value);
 
     /**
      * Sets the <tt>RTPTranslator</tt> which is to forward RTP and RTCP traffic
@@ -407,7 +436,7 @@ public interface MediaStream
      * @param rtpTranslator the <tt>RTPTranslator</tt> which is to forward RTP
      * and RTCP traffic between this and other <tt>MediaStream</tt>s
      */
-    public void setRTPTranslator(RTPTranslator rtpTranslator);
+    void setRTPTranslator(RTPTranslator rtpTranslator);
 
     /**
      * Gets the {@link RTPTranslator} which forwards RTP and RTCP traffic
@@ -416,7 +445,7 @@ public interface MediaStream
      * @return the {@link RTPTranslator} which forwards RTP and RTCP traffic
      * between this and other {@code MediaStream}s or {@code null}
      */
-    public RTPTranslator getRTPTranslator();
+    RTPTranslator getRTPTranslator();
 
     /**
      * Sets the <tt>SSRCFactory</tt> which is to generate new synchronization
@@ -427,7 +456,7 @@ public interface MediaStream
      * <tt>MediaStream</tt> is to employ internal logic to generate new
      * synchronization source (SSRC) identifiers
      */
-    public void setSSRCFactory(SSRCFactory ssrcFactory);
+    void setSSRCFactory(SSRCFactory ssrcFactory);
 
     /**
      * Sets the target of this <tt>MediaStream</tt> to which it is to send and
@@ -437,7 +466,7 @@ public interface MediaStream
      * (e.g. RTP) and the control data (e.g. RTCP) locations to which this
      * <tt>MediaStream</tt> is to send and from which it is to receive
      */
-    public void setTarget(MediaStreamTarget target);
+    void setTarget(MediaStreamTarget target);
 
     /**
      * Starts capturing media from this stream's <tt>MediaDevice</tt> and then
@@ -447,21 +476,21 @@ public interface MediaStream
      * media received from the <tt>StreamConnector</tt> on the stream's
      * <tt>MediaDevice</tt>.
      */
-    public void start();
+    void start();
 
     /**
      * Stops all streaming and capturing in this <tt>MediaStream</tt> and closes
      * and releases all open/allocated devices/resources. This method has no
      * effect on an already closed stream and is simply ignored.
      */
-    public void stop();
+    void stop();
 
     /**
      * Sets the external (application-provided) <tt>TransformEngine</tt> of
      * this <tt>MediaStream</tt>.
      * @param transformEngine the <tt>TransformerEngine</tt> to use.
      */
-    public void setExternalTransformer(TransformEngine transformEngine);
+    void setExternalTransformer(TransformEngine transformEngine);
 
     /**
      * Sends a given RTP or RTCP packet to the remote peer/side.
@@ -480,64 +509,41 @@ public interface MediaStream
      * {@code reverseTransform} of a {@code PacketTransformer} of its own even).
      * @throws TransmissionFailedException if the transmission failed.
      */
-    public void injectPacket(RawPacket pkt, boolean data, TransformEngine after)
+    void injectPacket(RawPacket pkt, boolean data, TransformEngine after)
         throws TransmissionFailedException;
 
     /**
-     * Gets the current active <tt>RTCPTerminationStrategy</tt> which is to
-     * inspect and modify RTCP traffic between multiple <tt>MediaStream</tt>s.
+     * Utility method that determines whether or not a packet is a key frame.
      *
-     * @return the <tt>RTCPTerminationStrategy</tt> which is to inspect and
-     * modify RTCP traffic between multiple <tt>MediaStream</tt>s.
+     * @param buf the buffer that holds the RTP packet.
+     * @param off the offset in the buff where the RTP packet is found.
+     * @param len then length of the RTP packet in the buffer.
+     * @return true if the packet is a key frame, false otherwise.
      */
-    public RTCPTerminationStrategy getRTCPTerminationStrategy();
+    boolean isKeyFrame(byte[] buf, int off, int len);
 
     /**
-     * Sets the current active <tt>RTCPTerminationStrategy</tt> which is to
-     * inspect and modify RTCP traffic between multiple <tt>MediaStream</tt>s.
+     * Utility method that determines whether or not a packet is a key frame.
      *
-     * @param rtcpTerminationStrategy the <tt>RTCPTerminationStrategy</tt> which
-     * is to inspect and modify RTCP traffic between multiple
-     * <tt>MediaStream</tt>s.
+     * @param pkt the packet.
      */
-    public void setRTCPTerminationStrategy(
-        RTCPTerminationStrategy rtcpTerminationStrategy);
-
-    /**
-     * Configures the <tt>MediaStream</tt> to rewrite SSRCs. For example,
-     * rewrite RTP streams {S1, S2, S3} to S, and FID streams {F1, F2, F3} to F.
-     *
-     * You can also define the payload types for FEC and RED, so that FEC and
-     * RED packets have their structure appropriately rewritten.
-     *
-     * @param ssrcGroup A set of primary SSRCs to rewrite.
-     * @param ssrcTargetPrimary the SSRC into which the ssrcGroup will be
-     * rewritten.
-     * @param ssrc2fec A map that maps SSRCs to their FEC payload type.
-     * @param ssrc2red A map that maps SSRCs to their RED payload type.
-     * @param rtxGroups A set of RTX SSRCs to rewrite.
-     * @param ssrcTargetRTX the SSRC into which the rtxGroups will be rewritten.
-     */
-    public void configureSSRCRewriting(
-        final Set<Integer> ssrcGroup, final Integer ssrcTargetPrimary,
-        final Map<Integer, Byte> ssrc2fec,
-        final Map<Integer, Byte> ssrc2red,
-        final Map<Integer, Integer> rtxGroups, final Integer ssrcTargetRTX);
-
-    /**
-     * Gets the {@link RawPacketCache} which (optionally) caches outgoing
-     * packets for this {@link MediaStream}, if it exists.
-     * @return the {@link RawPacketCache} for this {@link MediaStream}.
-     */
-    public RawPacketCache getPacketCache();
+    boolean isKeyFrame(RawPacket pkt);
 
     /**
      * @return the {@link RetransmissionRequester} for this media stream.
      */
-    public RetransmissionRequester getRetransmissionRequester();
+    RetransmissionRequester getRetransmissionRequester();
 
     /**
      * Gets the {@link TransformEngineChain} of this {@link MediaStream}.
      */
-    public TransformEngineChain getTransformEngineChain();
+    TransformEngineChain getTransformEngineChain();
+
+    /**
+     * Gets the {@link MediaStreamTrackReceiver} of this {@link MediaStream}.
+     *
+     * @return the {@link MediaStreamTrackReceiver} of this {@link MediaStream},
+     * or null.
+     */
+    MediaStreamTrackReceiver getMediaStreamTrackReceiver();
 }

@@ -28,6 +28,7 @@ import javax.media.protocol.*;
 
 import org.jitsi.impl.neomedia.control.*;
 import org.jitsi.impl.neomedia.device.*;
+import org.jitsi.impl.neomedia.rtcp.*;
 import org.jitsi.impl.neomedia.rtp.*;
 import org.jitsi.impl.neomedia.rtp.remotebitrateestimator.*;
 import org.jitsi.impl.neomedia.rtp.sendsidebandwidthestimation.*;
@@ -52,12 +53,12 @@ import org.jitsi.util.event.*;
  *
  * @author Lyubomir Marinov
  * @author Sebastien Vincent
+ * @author George Politis
  */
 public class VideoMediaStreamImpl
     extends MediaStreamImpl
     implements VideoMediaStream
 {
-
     /**
      * The <tt>Logger</tt> used by the <tt>VideoMediaStreamImpl</tt> class and
      * its instances for logging output.
@@ -66,19 +67,18 @@ public class VideoMediaStreamImpl
         = Logger.getLogger(VideoMediaStreamImpl.class);
 
     /**
-     * The <tt>RecurringProcessibleExecutor</tt> to be utilized by the
-     * <tt>VideoMediaStreamImpl</tt> class and its instances.
-     */
-    private static final RecurringProcessibleExecutor
-        recurringProcessibleExecutor
-            = new RecurringProcessibleExecutor(
-                    VideoMediaStreamImpl.class.getSimpleName());
-
-    /**
      * The indicator which determines whether RTCP feedback Picture Loss
      * Indication messages are to be used.
      */
     private static final boolean USE_RTCP_FEEDBACK_PLI = true;
+
+    /**
+     * The <tt>RecurringRunnableExecutor</tt> to be utilized by the
+     * <tt>MediaStreamImpl</tt> class and its instances.
+     */
+    private static final RecurringRunnableExecutor
+        recurringRunnableExecutor = new RecurringRunnableExecutor(
+        VideoMediaStreamImpl.class.getSimpleName());
 
     /**
      * Extracts and returns maximum resolution can receive from the image
@@ -96,9 +96,9 @@ public class VideoMediaStreamImpl
         Pattern pSendSingle = Pattern.compile("send \\[x=[0-9]+,y=[0-9]+\\]");
         Pattern pRecvSingle = Pattern.compile("recv \\[x=[0-9]+,y=[0-9]+\\]");
         Pattern pSendRange = Pattern.compile(
-                "send \\[x=\\[[0-9]+-[0-9]+\\],y=\\[[0-9]+-[0-9]+\\]\\]");
+                "send \\[x=\\[[0-9]+(-|:)[0-9]+\\],y=\\[[0-9]+(-|:)[0-9]+\\]\\]");
         Pattern pRecvRange = Pattern.compile(
-                "recv \\[x=\\[[0-9]+-[0-9]+\\],y=\\[[0-9]+-[0-9]+\\]\\]");
+                "recv \\[x=\\[[0-9]+(-|:)[0-9]+\\],y=\\[[0-9]+(-|:)[0-9]+\\]\\]");
         Pattern pNumeric = Pattern.compile("[0-9]+");
         Matcher mSingle = null;
         Matcher mRange = null;
@@ -107,7 +107,7 @@ public class VideoMediaStreamImpl
         /* resolution (width and height) can be on four forms
          *
          * - single value [x=1920,y=1200]
-         * - range of values [x=[800-1024],y=[600-768]]
+         * - range of values [x=[800:1024],y=[600:768]]
          * - fixed range of values [x=[800,1024],y=[600,768]]
          * - range of values with step [x=[800:32:1024],y=[600:32:768]]
          *
@@ -134,7 +134,7 @@ public class VideoMediaStreamImpl
         }
         else if(mRange.find()) /* try with range */
         {
-            /* have two value for width and two for height (min-max) */
+            /* have two value for width and two for height (min:max) */
             int val[]  = new int[4];
             int i = 0;
             token = imgattr.substring(mRange.start(), mRange.end());
@@ -169,7 +169,7 @@ public class VideoMediaStreamImpl
         }
         else if(mRange.find()) /* try with range */
         {
-            /* have two value for width and two for height (min-max) */
+            /* have two value for width and two for height (min:max) */
             int val[]  = new int[4];
             int i = 0;
             token = imgattr.substring(mRange.start(), mRange.end());
@@ -421,6 +421,25 @@ public class VideoMediaStreamImpl
     private final QualityControlImpl qualityControl = new QualityControlImpl();
 
     /**
+     * The instance that is aware of all of the {@link RTPEncodingDesc} of the
+     * remote endpoint.
+     */
+    private final MediaStreamTrackReceiver mediaStreamTrackReceiver
+        = new MediaStreamTrackReceiver(this);
+
+    /**
+     * The transformer which handles outgoing rtx (RFC-4588) packets for this
+     * {@link VideoMediaStreamImpl}.
+     */
+    private final RtxTransformer rtxTransformer = new RtxTransformer(this);
+
+    /**
+     * The instance that terminates RRs and REMBs.
+     */
+    private final RTCPReceiverFeedbackTermination rtcpFeedbackTermination
+        = new RTCPReceiverFeedbackTermination(this);
+
+    /**
      * The <tt>RemoteBitrateEstimator</tt> which computes bitrate estimates for
      * the incoming RTP streams.
      */
@@ -457,10 +476,16 @@ public class VideoMediaStreamImpl
         = new VideoNotifierSupport(this, true);
 
     /**
-     * The {@code BandwidthEstimator} which estimates the available bandwidth
+     * The {@link BandwidthEstimator} which estimates the available bandwidth
      * from this endpoint to the remote peer.
      */
     private BandwidthEstimatorImpl bandwidthEstimator;
+
+    /**
+     * The {@link CachingTransformer} which caches outgoing/incoming packets
+     * from/to this {@link VideoMediaStreamImpl}.
+     */
+    private CachingTransformer cachingTransformer;
 
     /**
      * Initializes a new <tt>VideoMediaStreamImpl</tt> instance which will use
@@ -481,15 +506,26 @@ public class VideoMediaStreamImpl
         super(connector, device, srtpControl);
 
         // Register the RemoteBitrateEstimator with the
-        // RecurringProcessibleExecutor.
+        // RecurringRunnableExecutor.
         RemoteBitrateEstimator remoteBitrateEstimator
             = getRemoteBitrateEstimator();
 
-        if (remoteBitrateEstimator instanceof RecurringProcessible)
+        if (remoteBitrateEstimator instanceof RecurringRunnable)
         {
-            recurringProcessibleExecutor.registerRecurringProcessible(
-                    (RecurringProcessible) remoteBitrateEstimator);
+            recurringRunnableExecutor.registerRecurringRunnable(
+                    (RecurringRunnable) remoteBitrateEstimator);
         }
+
+        recurringRunnableExecutor.registerRecurringRunnable(rtcpFeedbackTermination);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public RtxTransformer getRtxTransformer()
+    {
+        return rtxTransformer;
     }
 
     /**
@@ -540,19 +576,31 @@ public class VideoMediaStreamImpl
         finally
         {
             // Deregister the RemoteBitrateEstimator with the
-            // RecurringProcessibleExecutor.
+            // RecurringRunnableExecutor.
             RemoteBitrateEstimator remoteBitrateEstimator
                 = getRemoteBitrateEstimator();
 
-            if (remoteBitrateEstimator instanceof RecurringProcessible)
+            if (remoteBitrateEstimator instanceof RecurringRunnable)
             {
-                recurringProcessibleExecutor.deRegisterRecurringProcessible(
-                        (RecurringProcessible) remoteBitrateEstimator);
+                recurringRunnableExecutor.deRegisterRecurringRunnable(
+                        (RecurringRunnable) remoteBitrateEstimator);
             }
             if (bandwidthEstimator != null)
             {
-                recurringProcessibleExecutor.deRegisterRecurringProcessible(
+                recurringRunnableExecutor.deRegisterRecurringRunnable(
                         bandwidthEstimator);
+            }
+
+            if (cachingTransformer != null)
+            {
+                recurringRunnableExecutor.deRegisterRecurringRunnable(
+                    cachingTransformer);
+            }
+
+            if (rtcpFeedbackTermination != null)
+            {
+                recurringRunnableExecutor
+                    .deRegisterRecurringRunnable(rtcpFeedbackTermination);
             }
         }
     }
@@ -648,6 +696,16 @@ public class VideoMediaStreamImpl
 
         bufferControl.setBufferLength(BufferControl.MAX_VALUE);
     }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MediaStreamTrackReceiver getMediaStreamTrackReceiver()
+    {
+        return mediaStreamTrackReceiver;
+    }
+
 
     /**
      * Notifies this <tt>VideoMediaStreamImpl</tt> that a
@@ -1312,7 +1370,14 @@ public class VideoMediaStreamImpl
     @Override
     protected CachingTransformer createCachingTransformer()
     {
-        return new CachingTransformer();
+        if (cachingTransformer == null)
+        {
+            cachingTransformer = new CachingTransformer(this);
+            recurringRunnableExecutor.registerRecurringRunnable(
+                cachingTransformer);
+        }
+
+        return cachingTransformer;
     }
 
     /**
@@ -1333,12 +1398,21 @@ public class VideoMediaStreamImpl
      * {@inheritDoc}
      */
     @Override
+    protected RTCPReceiverFeedbackTermination getRTCPTermination()
+    {
+        return rtcpFeedbackTermination;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     public BandwidthEstimator getOrCreateBandwidthEstimator()
     {
         if (bandwidthEstimator == null)
         {
             bandwidthEstimator = new BandwidthEstimatorImpl(this);
-            recurringProcessibleExecutor.registerRecurringProcessible(
+            recurringRunnableExecutor.registerRecurringRunnable(
                     bandwidthEstimator);
             logger.info("Creating a BandwidthEstimator for stream " + this);
         }

@@ -15,6 +15,7 @@
  */
 package org.jitsi.impl.neomedia.codec.video.vp8;
 
+import org.jitsi.impl.neomedia.*;
 import org.jitsi.impl.neomedia.codec.*;
 import org.jitsi.service.neomedia.codec.*;
 import org.jitsi.util.*;
@@ -419,14 +420,15 @@ public class DePacketizer
      * <tt>offset</tt>.
      *
      * @param buff the byte buffer to check
-     * @param off the offset in the byte buffer where the actuall data starts
+     * @param off the offset in the byte buffer where the actual data starts
      * @param len the length of the data in the byte buffer
      * @return true if the buffer contains a VP8 key frame at offset
      * <tt>offset</tt>.
      */
     public static boolean isKeyFrame(byte[] buff, int off, int len)
     {
-        if (buff == null || len < 1 || buff.length < off + len)
+        if (buff == null || buff.length < off + len
+            || len < RawPacket.FIXED_HEADER_SIZE)
         {
             return false;
         }
@@ -491,6 +493,36 @@ public class DePacketizer
          * X bit from the first byte of the Payload Descriptor.
          */
         private static final byte X_BIT = (byte) 0x80;
+
+        /**
+         * Gets the temporal layer index (TID), if that's set.
+         *
+         * @param buf the byte buffer that holds the VP8 packet.
+         * @param off the offset in the byte buffer where the VP8 packet starts.
+         * @param len the length of the VP8 packet.
+         *
+         * @return the temporal layer index (TID), if that's set, -1 otherwise.
+         */
+        public static int getTemporalLayerIndex(byte[] buf, int off, int len)
+        {
+            if (buf == null || buf.length < off + len || len < 2)
+            {
+                return -1;
+            }
+
+            if ((buf[off] & X_BIT) == 0 || (buf[off+1] & T_BIT) == 0)
+            {
+                return -1;
+            }
+
+            int sz = getSize(buf, off);
+            if (buf.length < off + sz || sz < 1)
+            {
+                return -1;
+            }
+
+            return (buf[off + sz - 1] & 0xc0) >> 6;
+        }
 
         /**
          * Returns a simple Payload Descriptor, with PartID = 0, the 'start

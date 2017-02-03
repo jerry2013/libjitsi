@@ -21,6 +21,7 @@ import org.jitsi.service.neomedia.rtp.*;
 import org.jitsi.util.concurrent.*;
 
 import java.util.*;
+import java.util.concurrent.*;
 
 /**
  * Implements part of the send-side bandwidth estimation described in
@@ -32,10 +33,10 @@ import java.util.*;
  */
 public class BandwidthEstimatorImpl
     extends RTCPReportAdapter
-    implements BandwidthEstimator, RecurringProcessible
+    implements BandwidthEstimator, RecurringRunnable
 {
     /**
-     * The interval at which {@link #process()} should be called, in
+     * The interval at which {@link #run()} should be called, in
      * milliseconds.
      */
     private static final int PROCESS_INTERVAL_MS = 25;
@@ -59,7 +60,7 @@ public class BandwidthEstimatorImpl
      * bitrate_controller_impl.h
      */
     private Map<Long,Long> ssrc_to_last_received_extended_high_seq_num_
-        = new HashMap<>();
+        = new ConcurrentHashMap<>();
 
     private long lastUpdateTime = -1;
 
@@ -69,18 +70,12 @@ public class BandwidthEstimatorImpl
     private final SendSideBandwidthEstimation sendSideBandwidthEstimation;
 
     /**
-     * The {@link MediaStream} which owns this instance.
-     */
-    private final MediaStream mediaStream;
-
-    /**
      * Initializes a new instance which is to belong to a particular
      * {@link MediaStream}.
      * @param stream the {@link MediaStream}.
      */
     public BandwidthEstimatorImpl(MediaStream stream)
     {
-        mediaStream = stream;
         sendSideBandwidthEstimation
             = new SendSideBandwidthEstimation(stream, START_BITRATE_BPS);
         sendSideBandwidthEstimation.setMinMaxBitrate(
@@ -88,7 +83,7 @@ public class BandwidthEstimatorImpl
 
         // Hook us up to receive Report Blocks and REMBs.
         MediaStreamStats stats = stream.getMediaStreamStats();
-        stats.addRembListener(sendSideBandwidthEstimation);
+        stats.addRTCPPacketListener(sendSideBandwidthEstimation);
         stats.getRTCPReports().addRTCPReportListener(this);
     }
 
@@ -122,7 +117,6 @@ public class BandwidthEstimatorImpl
             if (lastEHSN == null)
             {
                 lastEHSN = extSeqNum;
-                continue;
             }
 
             ssrc_to_last_received_extended_high_seq_num_.put(ssrc, extSeqNum);
@@ -180,7 +174,7 @@ public class BandwidthEstimatorImpl
      * {@inheritDoc}
      */
     @Override
-    public long getTimeUntilNextProcess()
+    public long getTimeUntilNextRun()
     {
         return
                 (lastUpdateTime < 0L)
@@ -193,13 +187,39 @@ public class BandwidthEstimatorImpl
      * {@inheritDoc}
      */
     @Override
-    public long process()
+    public void run()
     {
         synchronized (sendSideBandwidthEstimation)
         {
             lastUpdateTime = System.currentTimeMillis();
             sendSideBandwidthEstimation.updateEstimate(lastUpdateTime);
         }
-        return 0;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long getLatestEstimate()
+    {
+        return sendSideBandwidthEstimation.getLatestEstimate();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long getLatestREMB()
+    {
+        return sendSideBandwidthEstimation.getLatestREMB();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getLatestFractionLoss()
+    {
+        return sendSideBandwidthEstimation.getLatestFractionLoss();
     }
 }

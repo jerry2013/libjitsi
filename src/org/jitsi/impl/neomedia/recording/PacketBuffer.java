@@ -19,6 +19,8 @@ import java.util.*;
 
 import org.jitsi.impl.neomedia.*;
 import org.jitsi.impl.neomedia.transform.*;
+import org.jitsi.service.configuration.*;
+import org.jitsi.service.libjitsi.*;
 
 /**
  * A <tt>TransformEngine</tt> and <tt>PacketTransformer</tt> which implement
@@ -71,21 +73,32 @@ public class PacketBuffer
     };
 
     /**
+     * The <tt>ConfigurationService</tt> used to load buffering configuration.
+     */
+    private final static ConfigurationService cfg =
+            LibJitsi.getConfigurationService();
+
+    /**
      * The payload type for VP8.
      * TODO: make this configurable.
      */
     private static int VP8_PAYLOAD_TYPE = 100;
 
     /**
+     * The parameter name for the packet buffer size
+     */
+    private static final String PACKET_BUFFER_SIZE_PNAME =
+            PacketBuffer.class.getCanonicalName() + ".SIZE";
+    /**
      * The size of the buffer for each SSRC.
      */
-    private static int SIZE = 300;
+    private static int SIZE = cfg.getInt(PACKET_BUFFER_SIZE_PNAME, 300);
 
     /**
      * The map of actual <tt>Buffer</tt> instances, one for each SSRC that this
      * <tt>PacketBuffer</tt> buffers in each instant.
      */
-    private Map<Long, Buffer> buffers = new HashMap<Long, Buffer>();
+    private final Map<Long, Buffer> buffers = new HashMap<>();
 
     /**
      * Implements
@@ -113,6 +126,13 @@ public class PacketBuffer
         for (int i = 0; i<pkts.length; i++)
         {
             RawPacket pkt = pkts[i];
+
+            // Drop padding packets. We assume that any packets with padding
+            // are no-payload probing packets.
+            if (pkt != null && pkt.getPaddingSize() != 0)
+                pkts[i] = null;
+            pkt = pkts[i];
+
             if (willBuffer(pkt))
             {
                 Buffer buffer = getBuffer(pkt.getSSRCAsLong());
@@ -180,9 +200,7 @@ public class PacketBuffer
     {
         synchronized (buffers)
         {
-            Buffer buffer = buffers.get(ssrc);
-            if (buffer != null)
-                buffers.remove(ssrc);
+            buffers.remove(ssrc);
         }
     }
 
@@ -195,21 +213,16 @@ public class PacketBuffer
      */
     private Buffer getBuffer(long ssrc)
     {
-        Buffer buffer = buffers.get(ssrc);
-        if (buffer == null)
+        synchronized (buffers)
         {
-            synchronized (buffers)
+            Buffer buffer = buffers.get(ssrc);
+            if (buffer == null)
             {
-                buffer = buffers.get(ssrc);
-                if (buffer == null)
-                {
-                    buffer = new Buffer(SIZE, ssrc);
-                    buffers.put(ssrc, buffer);
-                }
+                buffer = new Buffer(SIZE, ssrc);
+                buffers.put(ssrc, buffer);
             }
+            return buffer;
         }
-
-        return buffer;
     }
 
     /**
@@ -221,7 +234,11 @@ public class PacketBuffer
      */
     RawPacket[] emptyBuffer(long ssrc)
     {
-        Buffer buffer = buffers.get(ssrc);
+        Buffer buffer;
+        synchronized (buffers)
+        {
+            buffer = buffers.get(ssrc);
+        }
         if (buffer != null)
         {
             return buffer.empty();

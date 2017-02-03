@@ -592,7 +592,7 @@ public class RTPTranslatorImpl
                 // a chance to inspect the received packet and decide whether
                 // or not it should keep asking for a key frame or stop.
                 rtcpFeedbackMessageSender.maybeStopRequesting(
-                    streamRTPManager, ssrc, pt, buf, off, len);
+                    streamRTPManager, ssrc, buf, off, len);
             }
         }
         else if (LOGGER.isTraceEnabled())
@@ -631,26 +631,26 @@ public class RTPTranslatorImpl
         lock.lock();
         try
         {
+            rtcpFeedbackMessageSender.dispose();
 
-        manager.removeReceiveStreamListener(this);
-        try
-        {
-            manager.dispose();
-        }
-        catch (Throwable t)
-        {
-            if (t instanceof ThreadDeath)
+            manager.removeReceiveStreamListener(this);
+            try
             {
-                throw (ThreadDeath) t;
+                manager.dispose();
             }
-            else
+            catch (Throwable t)
             {
-                // RTPManager.dispose() often throws at least a
-                // NullPointerException in relation to some RTP BYE.
-                LOGGER.error("Failed to dispose of RTPManager", t);
+                if (t instanceof ThreadDeath)
+                {
+                    throw (ThreadDeath) t;
+                }
+                else
+                {
+                    // RTPManager.dispose() often throws at least a
+                    // NullPointerException in relation to some RTP BYE.
+                    LOGGER.error("Failed to dispose of RTPManager", t);
+                }
             }
-        }
-
         }
         finally
         {
@@ -1163,27 +1163,6 @@ public class RTPTranslatorImpl
         {
             ((org.jitsi.impl.neomedia.jmfext.media.rtp.RTPSessionMgr)manager)
                   .setSSRCFactory(ssrcFactory);
-        }
-    }
-
-    /**
-     * Sets the <tt>RTCPTransmitterFactory</tt> to be utilized by the
-     * underlying logic (FMJ) to create its <tt>RTCPTransmitter</tt>.
-     *
-     * @param rtcpTransmitterFactory the <tt>RTCPTransmitterFactory</tt> to be
-     * utilized by the underlying logic (FMJ) to create its
-     * <tt>RTCPTransmitter</tt> or <tt>null</tt> if this instance is to employ
-     * internal logic to create its <tt>RTCPTransmitter</tt>.
-     */
-    public void setRTCPTransmitterFactory(
-        RTCPTransmitterFactory rtcpTransmitterFactory)
-    {
-        RTPManager manager = this.manager;
-        if (manager instanceof
-            org.jitsi.impl.neomedia.jmfext.media.rtp.RTPSessionMgr)
-        {
-            ((org.jitsi.impl.neomedia.jmfext.media.rtp.RTPSessionMgr)manager)
-                .setRTCPTransmitterFactory(rtcpTransmitterFactory);
         }
     }
 

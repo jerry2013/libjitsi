@@ -20,12 +20,38 @@ package org.jitsi.service.neomedia.rtp;
  */
 public interface BandwidthEstimator
 {
-    public void addListener(Listener listener);
-    public void removeListener(Listener listener);
+    /**
+     * Adds a listener to be notified about changes to the bandwidth estimation.
+     * @param listener
+     */
+    void addListener(Listener listener);
 
-    public interface Listener
+    /**
+     * Removes a listener.
+     * @param listener
+     */
+    void removeListener(Listener listener);
+
+    /**
+     * @return the latest estimate.
+     */
+    long getLatestEstimate();
+
+    /**
+     * @return the latest values of the Receiver Estimated Maximum Bandwidth.
+     */
+    long getLatestREMB();
+
+    /**
+     * @return the latest effective fraction loss calculated by this
+     * {@link BandwidthEstimator}. The value is between 0 and 256 (corresponding
+     * to 0% and 100% respectively).
+     */
+    int getLatestFractionLoss();
+
+    interface Listener
     {
-        public void bandwidthEstimationChanged(long newValueBps);
+        void bandwidthEstimationChanged(long newValueBps);
     }
 }
 

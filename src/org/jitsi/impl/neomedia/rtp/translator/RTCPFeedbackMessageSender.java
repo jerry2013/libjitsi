@@ -15,16 +15,12 @@
  */
 package org.jitsi.impl.neomedia.rtp.translator;
 
-import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 
 import org.jitsi.impl.neomedia.*;
-import org.jitsi.impl.neomedia.codec.video.vp8.*;
 import org.jitsi.impl.neomedia.rtp.*;
-import org.jitsi.service.neomedia.codec.*;
 import org.jitsi.service.neomedia.event.*;
-import org.jitsi.service.neomedia.format.*;
 import org.jitsi.util.*;
 import org.jitsi.util.concurrent.*;
 
@@ -72,11 +68,11 @@ public class RTCPFeedbackMessageSender
     private final RTPTranslatorImpl rtpTranslator;
 
     /**
-     * The {@link RecurringProcessibleExecutor} which will periodically call
-     * {@link KeyframeRequester#process()} and trigger their retry logic.
+     * The {@link RecurringRunnableExecutor} which will periodically call
+     * {@link KeyframeRequester#run()} and trigger their retry logic.
      */
-    private final RecurringProcessibleExecutor recurringProcessibleExecutor
-        = new RecurringProcessibleExecutor(
+    private final RecurringRunnableExecutor recurringRunnableExecutor
+        = new RecurringRunnableExecutor(
                 RTCPFeedbackMessageSender.class.getSimpleName());
 
     /**
@@ -123,9 +119,9 @@ public class RTCPFeedbackMessageSender
      */
     public boolean sendFIR(int mediaSenderSSRC)
     {
-        boolean registerRecurringProcessible = false;
+        boolean registerRecurringRunnable = false;
         KeyframeRequester keyframeRequester = kfRequesters.get(mediaSenderSSRC);
-        if (keyframeRequester == null )
+        if (keyframeRequester == null)
         {
             // Avoided repeated creation of unneeded objects until get fails.
             keyframeRequester = new KeyframeRequester(mediaSenderSSRC);
@@ -134,15 +130,24 @@ public class RTCPFeedbackMessageSender
             if (existingKfRequester != null)
             {
                 // Another thread beat this one to putting a keyframe requester.
+                // That other thread is responsible for registering the keyframe
+                // requester with the recurring runnable executor.
                 keyframeRequester = existingKfRequester;
-                registerRecurringProcessible = true;
+            }
+            else
+            {
+                registerRecurringRunnable = true;
             }
         }
 
-        if (registerRecurringProcessible)
+        if (registerRecurringRunnable)
         {
-            recurringProcessibleExecutor
-                .registerRecurringProcessible(keyframeRequester);
+            // TODO (2016-12-29) Think about eventually de-registering these
+            // runnables, but note that with the current code this MUST NOT
+            // happen inside run() because of concurrent modification of the
+            // executor's list.
+            recurringRunnableExecutor
+                .registerRecurringRunnable(keyframeRequester);
         }
 
         return keyframeRequester.maybeRequest(true);
@@ -190,7 +195,6 @@ public class RTCPFeedbackMessageSender
     public void maybeStopRequesting(
         StreamRTPManagerDesc streamRTPManager,
         int ssrc,
-        int pt,
         byte[] buf,
         int off,
         int len)
@@ -198,8 +202,17 @@ public class RTCPFeedbackMessageSender
         KeyframeRequester kfRequester = kfRequesters.get(ssrc);
         if (kfRequester != null)
         {
-            kfRequester.maybeStopRequesting(streamRTPManager, pt, buf, off, len);
+            kfRequester.maybeStopRequesting(streamRTPManager, buf, off, len);
         }
+    }
+
+    /**
+     * Releases the resources allocated by this instance in the course of its
+     * execution and prepares it to be garbage collected.
+     */
+    void dispose()
+    {
+        recurringRunnableExecutor.close();
     }
 
     /**
@@ -207,7 +220,7 @@ public class RTCPFeedbackMessageSender
      * a specific media sender identified by its SSRC.
      */
     class KeyframeRequester
-        extends PeriodicProcessible
+        extends PeriodicRunnable
     {
         /**
          * The media sender SSRC of this <tt>KeyframeRequester</tt>
@@ -240,13 +253,11 @@ public class RTCPFeedbackMessageSender
          * {@inheritDoc}
          */
         @Override
-        public long process()
+        public void run()
         {
-            long ret = super.process();
+            super.run();
 
             this.maybeRequest(false);
-
-            return ret; /* unused */
         }
 
         /**
@@ -264,7 +275,6 @@ public class RTCPFeedbackMessageSender
          */
         public void maybeStopRequesting(
             StreamRTPManagerDesc streamRTPManager,
-            int pt,
             byte[] buf,
             int off,
             int len)
@@ -274,43 +284,20 @@ public class RTCPFeedbackMessageSender
                 return;
             }
 
-            // Reduce auto-boxing (even tho the compiler or the JIT should do
-            // this automatically).
-            Byte redPT = null, vp8PT = null;
-
-            // XXX do we want to do this only once?
-            for (Map.Entry<Byte, MediaFormat> entry : streamRTPManager
-                .streamRTPManager.getMediaStream().getDynamicRTPPayloadTypes()
-                .entrySet())
-            {
-                String encoding = entry.getValue().getEncoding();
-                if (Constants.VP8.equals(encoding))
-                {
-                    vp8PT = entry.getKey();
-                }
-                else if (Constants.RED.equals(encoding))
-                {
-                    redPT = entry.getKey();
-                }
-            }
-
-            if (vp8PT == null || vp8PT != pt)
+            if(!streamRTPManager
+                .streamRTPManager.getMediaStream().isKeyFrame(buf, off, len))
             {
                 return;
             }
 
-            if (!Utils.isKeyFrame(buf, off, len, redPT, vp8PT))
+            if (TRACE)
             {
-                return;
+                logger.trace("Stopping FIRs to ssrc="
+                                 + (mediaSenderSSRC & 0xffffffffL));
             }
 
             // This lock only runs while we're waiting for a key frame. It
             // should not slow things down significantly.
-            if (TRACE)
-            {
-                logger.trace("Stopping FIRs to ssrc=" + mediaSenderSSRC);
-            }
-
             synchronized (this)
             {
                 remainingRetries = 0;
@@ -334,7 +321,7 @@ public class RTCPFeedbackMessageSender
                         if (TRACE)
                         {
                             logger.trace("Starting FIRs to ssrc="
-                                + mediaSenderSSRC);
+                                + (mediaSenderSSRC & 0xffffffffL));
                         }
 
                         remainingRetries = FIR_MAX_RETRIES;
@@ -346,7 +333,7 @@ public class RTCPFeedbackMessageSender
                         if (TRACE)
                         {
                             logger.trace("Pending FIRs to ssrc="
-                                + mediaSenderSSRC);
+                                + (mediaSenderSSRC & 0xffffffffL));
                         }
 
                         return true;
@@ -359,18 +346,9 @@ public class RTCPFeedbackMessageSender
 
                 remainingRetries--;
 
-                if (TRACE)
-                {
-                    if (remainingRetries != 0)
-                    {
-                        logger.trace("Sending a FIR to ssrc=" + mediaSenderSSRC);
-                    }
-                    else
-                    {
-                        logger.trace("Sending the last FIR to ssrc=" +
-                            mediaSenderSSRC);
-                    }
-                }
+                logger.info("Sending a FIR to ssrc="
+                            + (mediaSenderSSRC & 0xffffffffL)
+                            + " remainingRetries=" + remainingRetries);
             }
 
             long senderSSRC = getSenderSSRC();
@@ -396,7 +374,7 @@ public class RTCPFeedbackMessageSender
                 RTCPFeedbackMessageEvent.FMT_FIR,
                 RTCPFeedbackMessageEvent.PT_PS,
                 senderSSRC,
-                0xffffffffl & mediaSenderSSRC);
+                0xffffffffL & mediaSenderSSRC);
 
             fir.setSequenceNumber(sequenceNumber.incrementAndGet());
 
