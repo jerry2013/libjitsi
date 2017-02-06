@@ -49,10 +49,10 @@ public class WebmWriter
     private native void freeCfg(long glob);
 
     private native boolean openFile(long glob, String fileName);
-    private native void writeWebmFileHeader(long glob, int width, int height, long trackID);
+    private native void writeWebmFileHeader(long glob, int width, int height);
     public void writeWebmFileHeader(int width, int height)
     {
-        writeWebmFileHeader(glob, width, height, 1);
+        writeWebmFileHeader(glob, width, height);
     }
     private native void writeWebmBlock(long glob, FrameDescriptor fd);
     private native void writeWebmFileFooter(long glob, long hash);
